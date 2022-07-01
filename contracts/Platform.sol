@@ -4,12 +4,11 @@ pragma solidity ^0.8.13;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
 import "./Staking.sol";
 import "./uniswap/IUniswapV2Router02.sol";
 import "./ACDMToken.sol";
 import "./XXXToken.sol";
-
-// todo: DECIMALS
 
 /// @title DAO Voting contract
 /// @author fukktalent
@@ -19,6 +18,8 @@ contract Platform is AccessControl, ReentrancyGuard {
     bytes32 private constant DAO_ROLE = keccak256("DAO_ROLE");
     address private constant UNI_ROUTER =
         0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+
+    using Address for address payable;
 
     enum Rounds {
         Sale,
@@ -48,6 +49,7 @@ contract Platform is AccessControl, ReentrancyGuard {
     XXXToken private _xxxToken;
 
     uint32 private _roundTime;
+    uint256 private _minTokensToStartTrade = 1 * (10**TOKEN_DECIMALS);
 
     mapping(address => User) private _users;
 
@@ -83,6 +85,27 @@ contract Platform is AccessControl, ReentrancyGuard {
     /// @param round type of round: sale or trade
     /// @param roundFinishDate round finish timestamp
     event RoundStarted(Rounds round, uint32 roundFinishDate);
+
+    /// @notice when sold tokens in sale round
+    /// @param buyer type of round: sale or trade
+    /// @param amount round finish timestamp
+    /// @param price round finish timestamp
+    event TokensSold(address buyer, uint256 amount, uint256 price);
+
+    /// @notice when order was created in trade round
+    /// @param orderId order id
+    /// @param order order info
+    event OrderCreated(uint256 orderId, Order order);
+
+    /// @notice when order was redeemed in trade round
+    /// @param orderId order id
+    /// @param buyer buyer address
+    /// @param amount amount of purchased tokens
+    event OrderRedeemed(uint256 orderId, address buyer, uint256 amount);
+
+    /// @notice when order was removed in trade round
+    /// @param orderId order id
+    event OrderRemoved(uint256 orderId);
 
     error FunctionInvalidAtThisRound();
     error UserIsNotRegistered(address);
@@ -161,6 +184,8 @@ contract Platform is AccessControl, ReentrancyGuard {
 
         _payback(ethNeeded);
         _refReward(ethNeeded, _saleRef1Percent, _saleRef2Percent);
+
+        emit TokensSold(msg.sender, amount, _tokenPrice);
     }
 
     /// @notice creates sell order
@@ -181,6 +206,8 @@ contract Platform is AccessControl, ReentrancyGuard {
         order_.amount = amount;
         order_.price = price;
         order_.owner = msg.sender;
+
+        emit OrderCreated(_ordersCount, order_);
     }
 
     /// @notice removes sell order
@@ -196,6 +223,8 @@ contract Platform is AccessControl, ReentrancyGuard {
 
         _acdmToken.transfer(msg.sender, _orders[orderId].amount);
         delete _orders[orderId];
+
+        emit OrderRemoved(_ordersCount);
     }
 
     /// @notice buy tokens from order for ether
@@ -226,16 +255,16 @@ contract Platform is AccessControl, ReentrancyGuard {
         order_.amount -= amount;
         _tokensSoldInEth += ethNeeded;
 
-        payable(order_.owner).transfer(
-            (ethNeeded *
-                (100 *
-                    (10**_refPercentDecimals) -
-                    _tradeRef1Percent -
-                    _tradeRef2Percent)) / (100 * (10**_refPercentDecimals))
+        uint256 refsAmount = _tradeRef1Percent + _tradeRef2Percent;
+        uint256 fullShare = 100 * (10**_refPercentDecimals); // 100%
+        payable(order_.owner).sendValue(
+            (ethNeeded * (fullShare - refsAmount) / fullShare)
         );
 
         _payback(ethNeeded);
         _refReward(ethNeeded, _tradeRef1Percent, _tradeRef2Percent);
+
+        emit OrderRedeemed(orderId, msg.sender, amount);
     }
 
     /// @notice buys xxx tokens for dao ether and burns it
@@ -270,7 +299,7 @@ contract Platform is AccessControl, ReentrancyGuard {
     {
         uint256 toTransfer = _daoBalance;
         _daoBalance = 0;
-        payable(_owner).transfer(toTransfer);
+        payable(_owner).sendValue(toTransfer);
     }
 
     /// @notice calc values for trade round and starts trade round
@@ -280,7 +309,10 @@ contract Platform is AccessControl, ReentrancyGuard {
         atRound(Rounds.Sale)
         onlyRegistered()
     {
-        if (block.timestamp < _roundFinishDate && _tokenAmount != 0) {
+        if (
+            block.timestamp < _roundFinishDate
+            && _tokenAmount > _minTokensToStartTrade
+        ) {
             revert EarlyToStartNextRound();
         }
 
@@ -327,6 +359,17 @@ contract Platform is AccessControl, ReentrancyGuard {
         _tradeRef1Percent = tradeRef1Percent;
         _tradeRef2Percent = tradeRef2Percent;
         _refPercentDecimals = refPercentDecimals;
+    }
+
+    /// @notice Set _setMinTokensToStartTrade
+    /// @param amount the minimum amount of tokens at which trade round can be started
+    function setMinTokensToStartTrade(
+        uint256 amount
+    ) 
+        external
+        onlyRole(DAO_ROLE)
+    {
+        _minTokensToStartTrade = amount;
     }
 
     /// @notice returns referal settings
@@ -401,6 +444,12 @@ contract Platform is AccessControl, ReentrancyGuard {
         return _orders[orderId];
     }
 
+    /// @notice returns _minTokensToStartTrade
+    /// @return _minTokensToStartTrade the minimum amount of tokens at which trade round can be started
+    function minTokensToStartTrade() external view returns (uint256) {
+        return _minTokensToStartTrade;
+    }
+
     /// @notice update round type and sets new round finish date
     /// @param nextRound type of next round
     function _nextRound(Rounds nextRound) private {
@@ -425,10 +474,10 @@ contract Platform is AccessControl, ReentrancyGuard {
         uint256 ref2Amount = amount * ref2Percent / (100 * (10**_refPercentDecimals));
 
         if (user_.referrer != address(0)) {
-            payable(user_.referrer).transfer(ref1Amount);
+            payable(user_.referrer).sendValue(ref1Amount);
 
             if (_users[user_.referrer].referrer != address(0)) {
-                payable(_users[user_.referrer].referrer).transfer(ref2Amount);
+                payable(_users[user_.referrer].referrer).sendValue(ref2Amount);
             } else {
                 _daoBalance += ref2Amount;
             }
@@ -441,7 +490,7 @@ contract Platform is AccessControl, ReentrancyGuard {
     /// @param ethNeeded needed eth amount to buy tokens
     function _payback(uint256 ethNeeded) private {
         if (msg.value > ethNeeded) {
-            payable(msg.sender).transfer(msg.value - ethNeeded);
+            payable(msg.sender).sendValue(msg.value - ethNeeded);
         }
     }
 }

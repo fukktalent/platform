@@ -183,12 +183,32 @@ describe("Platform", function () {
                 ]
             );
 
+            await expect(tx).to.emit(platform, "TokensSold").withArgs(
+                acc3.address,
+                ethers.utils.parseUnits("10000", await acdmToken.decimals()),
+                ethers.utils.parseEther("0.00001")
+            );
+
             const daoBalance = await platform.daoBalance();
             expect(daoBalance).to.be.equal(0);
 
             const roundData = await platform.roundData();
             expect(roundData.tokenAmount).to.be.equal(
                 ethers.utils.parseUnits("90000", await acdmToken.decimals())
+            );
+        });
+    });
+
+    describe ("setMinTokensToStartTrade", function() {
+        it ("Should set _minTokensToStartTrade", async function() {
+            await platform.connect(dao).setMinTokensToStartTrade(
+                ethers.utils.parseUnits("20000", await acdmToken.decimals()),
+            );
+
+            expect(
+                await platform.minTokensToStartTrade()
+            ).to.be.equal(
+                ethers.utils.parseUnits("20000", await acdmToken.decimals())
             );
         });
     });
@@ -200,7 +220,7 @@ describe("Platform", function () {
             await expect(tx).to.be.revertedWith("EarlyToStartNextRound");
         });
 
-        it ("Should start trade round when all tokens sold", async function() {
+        it ("Should start trade round when almost all tokens sold", async function() {
             await platform.connect(acc2).buyACDM(
                 ethers.utils.parseUnits("30000", await acdmToken.decimals()),
                 { value: ethers.utils.parseEther("0.3") }
@@ -210,11 +230,11 @@ describe("Platform", function () {
             ).add(daoBalance);
 
             await platform.connect(acc1).buyACDM(
-                ethers.utils.parseUnits("60000", await acdmToken.decimals()),
-                { value: ethers.utils.parseEther("0.6") }
+                ethers.utils.parseUnits("50000", await acdmToken.decimals()),
+                { value: ethers.utils.parseEther("0.5") }
             );
             daoBalance = (
-                ethers.utils.parseEther("0.6").mul(REF.DEF.SALE_2_PERC + REF.DEF.SALE_1_PERC).div(1000)
+                ethers.utils.parseEther("0.5").mul(REF.DEF.SALE_2_PERC + REF.DEF.SALE_1_PERC).div(1000)
             ).add(daoBalance);
 
             const roundData = await platform.roundData();
@@ -228,7 +248,9 @@ describe("Platform", function () {
             expect(newRoundData.round).to.be.equal(1);
             expect(roundData.roundFinishDate).to.not.equal(newRoundData.roundFinishDate);
             expect(newRoundData.tokenPrice).to.be.equal(ethers.utils.parseEther("0.00001"));
-            expect(newRoundData.tokenAmount).to.be.equal(0);
+            expect(newRoundData.tokenAmount).to.be.equal(
+                ethers.utils.parseUnits("10000", await acdmToken.decimals()),
+            );
             expect(roundData.tokensSoldInEth).to.be.equal(0);
         });
     });
@@ -248,10 +270,11 @@ describe("Platform", function () {
         it ("Should place order", async function() {
             await acdmToken.connect(acc3).approve(platform.address, ethers.constants.MaxUint256);
 
-            await platform.connect(acc3).addOrder(
+            const tx = await platform.connect(acc3).addOrder(
                 ethers.utils.parseUnits("1000", await acdmToken.decimals()),
                 ethers.utils.parseEther("0.00002")
             );
+
             
             const order = await platform.order(1);
             expect(order.owner).to.be.equal(acc3.address);
@@ -261,24 +284,23 @@ describe("Platform", function () {
             expect(order.price).to.be.equal(
                 ethers.utils.parseEther("0.00002")
             );
+
+            await expect(tx).to.emit(platform, "OrderCreated").withArgs(
+                1,
+                order
+            );
         });
     });
 
     describe ("redeemOrder", function() {
         it ("Should transfer tokens to buyer and eth to seller", async function() {
+            const balance = await acdmToken.balanceOf(acc2.address);
+            const platformBalance = await acdmToken.balanceOf(platform.address);
+
             const tx = platform.connect(acc2).redeemOrder(
                 1,
                 ethers.utils.parseUnits("500", await acdmToken.decimals()),
                 { value: ethers.utils.parseEther("0.01") }
-            );
-
-            await expect(() => tx).changeTokenBalances(
-                acdmToken,
-                [acc2, platform],
-                [
-                    ethers.utils.parseUnits("500", await acdmToken.decimals()),
-                    ethers.utils.parseUnits("-500", await acdmToken.decimals())
-                ]
             );
 
             await expect(() => tx).changeEtherBalances(
@@ -288,6 +310,24 @@ describe("Platform", function () {
                     ethers.utils.parseEther("0.01").mul(REF.DEF.TRADE_1_PERC).div(1000),
                     ethers.utils.parseEther("0.01").mul(1000 - REF.DEF.SALE_1_PERC).div(1000),
                 ]
+            );
+
+            await expect(tx).to.emit(platform, "OrderRedeemed").withArgs(
+                1,
+                acc2.address,
+                ethers.utils.parseUnits("500", await acdmToken.decimals())
+            );
+
+            expect(
+                await acdmToken.balanceOf(acc2.address)
+            ).to.be.equal(
+                balance.add(ethers.utils.parseUnits("500", await acdmToken.decimals()))
+            );
+
+            expect(
+                await acdmToken.balanceOf(platform.address)
+            ).to.be.equal(
+                platformBalance.sub(ethers.utils.parseUnits("500", await acdmToken.decimals()))
             );
             
             const order = await platform.order(1);
@@ -339,15 +379,25 @@ describe("Platform", function () {
         });
 
         it ("Should remove order and send tokens back to owner", async function() {
+            const balance = await acdmToken.balanceOf(acc3.address);
+            const platformBalance = await acdmToken.balanceOf(platform.address);
+
             const tx = platform.connect(acc3).removeOrder(1);
 
-            await expect(() => tx).changeTokenBalances(
-                acdmToken,
-                [acc3, platform],
-                [
-                    ethers.utils.parseUnits("500", await acdmToken.decimals()),
-                    ethers.utils.parseUnits("-500", await acdmToken.decimals())
-                ]
+            await expect(tx).to.emit(platform, "OrderRemoved").withArgs(
+                1
+            );
+
+            expect(
+                await acdmToken.balanceOf(acc3.address)
+            ).to.be.equal(
+                balance.add(ethers.utils.parseUnits("500", await acdmToken.decimals()))
+            );
+
+            expect(
+                await acdmToken.balanceOf(platform.address)
+            ).to.be.equal(
+                platformBalance.sub(ethers.utils.parseUnits("500", await acdmToken.decimals()))
             );
 
             const order = await platform.order(1);

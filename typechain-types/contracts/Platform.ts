@@ -62,6 +62,7 @@ export interface PlatformInterface extends utils.Interface {
     "getRoleAdmin(bytes32)": FunctionFragment;
     "grantRole(bytes32,address)": FunctionFragment;
     "hasRole(bytes32,address)": FunctionFragment;
+    "minTokensToStartTrade()": FunctionFragment;
     "order(uint256)": FunctionFragment;
     "redeemOrder(uint64,uint256)": FunctionFragment;
     "refSettings()": FunctionFragment;
@@ -71,6 +72,7 @@ export interface PlatformInterface extends utils.Interface {
     "renounceRole(bytes32,address)": FunctionFragment;
     "revokeRole(bytes32,address)": FunctionFragment;
     "roundData()": FunctionFragment;
+    "setMinTokensToStartTrade(uint256)": FunctionFragment;
     "setRefSettings(uint16,uint16,uint16,uint16,uint8)": FunctionFragment;
     "startSaleRound()": FunctionFragment;
     "startTradeRound()": FunctionFragment;
@@ -89,6 +91,7 @@ export interface PlatformInterface extends utils.Interface {
       | "getRoleAdmin"
       | "grantRole"
       | "hasRole"
+      | "minTokensToStartTrade"
       | "order"
       | "redeemOrder"
       | "refSettings"
@@ -98,6 +101,7 @@ export interface PlatformInterface extends utils.Interface {
       | "renounceRole"
       | "revokeRole"
       | "roundData"
+      | "setMinTokensToStartTrade"
       | "setRefSettings"
       | "startSaleRound"
       | "startTradeRound"
@@ -139,6 +143,10 @@ export interface PlatformInterface extends utils.Interface {
     values: [PromiseOrValue<BytesLike>, PromiseOrValue<string>]
   ): string;
   encodeFunctionData(
+    functionFragment: "minTokensToStartTrade",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
     functionFragment: "order",
     values: [PromiseOrValue<BigNumberish>]
   ): string;
@@ -171,6 +179,10 @@ export interface PlatformInterface extends utils.Interface {
     values: [PromiseOrValue<BytesLike>, PromiseOrValue<string>]
   ): string;
   encodeFunctionData(functionFragment: "roundData", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "setMinTokensToStartTrade",
+    values: [PromiseOrValue<BigNumberish>]
+  ): string;
   encodeFunctionData(
     functionFragment: "setRefSettings",
     values: [
@@ -219,6 +231,10 @@ export interface PlatformInterface extends utils.Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "grantRole", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "hasRole", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "minTokensToStartTrade",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "order", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "redeemOrder",
@@ -244,6 +260,10 @@ export interface PlatformInterface extends utils.Interface {
   decodeFunctionResult(functionFragment: "revokeRole", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "roundData", data: BytesLike): Result;
   decodeFunctionResult(
+    functionFragment: "setMinTokensToStartTrade",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "setRefSettings",
     data: BytesLike
   ): Result;
@@ -266,17 +286,58 @@ export interface PlatformInterface extends utils.Interface {
   decodeFunctionResult(functionFragment: "user", data: BytesLike): Result;
 
   events: {
+    "OrderCreated(uint256,tuple)": EventFragment;
+    "OrderRedeemed(uint256,address,uint256)": EventFragment;
+    "OrderRemoved(uint256)": EventFragment;
     "RoleAdminChanged(bytes32,bytes32,bytes32)": EventFragment;
     "RoleGranted(bytes32,address,address)": EventFragment;
     "RoleRevoked(bytes32,address,address)": EventFragment;
     "RoundStarted(uint8,uint32)": EventFragment;
+    "TokensSold(address,uint256,uint256)": EventFragment;
   };
 
+  getEvent(nameOrSignatureOrTopic: "OrderCreated"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "OrderRedeemed"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "OrderRemoved"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "RoleAdminChanged"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "RoleGranted"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "RoleRevoked"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "RoundStarted"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "TokensSold"): EventFragment;
 }
+
+export interface OrderCreatedEventObject {
+  orderId: BigNumber;
+  order: Platform.OrderStructOutput;
+}
+export type OrderCreatedEvent = TypedEvent<
+  [BigNumber, Platform.OrderStructOutput],
+  OrderCreatedEventObject
+>;
+
+export type OrderCreatedEventFilter = TypedEventFilter<OrderCreatedEvent>;
+
+export interface OrderRedeemedEventObject {
+  orderId: BigNumber;
+  buyer: string;
+  amount: BigNumber;
+}
+export type OrderRedeemedEvent = TypedEvent<
+  [BigNumber, string, BigNumber],
+  OrderRedeemedEventObject
+>;
+
+export type OrderRedeemedEventFilter = TypedEventFilter<OrderRedeemedEvent>;
+
+export interface OrderRemovedEventObject {
+  orderId: BigNumber;
+}
+export type OrderRemovedEvent = TypedEvent<
+  [BigNumber],
+  OrderRemovedEventObject
+>;
+
+export type OrderRemovedEventFilter = TypedEventFilter<OrderRemovedEvent>;
 
 export interface RoleAdminChangedEventObject {
   role: string;
@@ -325,6 +386,18 @@ export type RoundStartedEvent = TypedEvent<
 >;
 
 export type RoundStartedEventFilter = TypedEventFilter<RoundStartedEvent>;
+
+export interface TokensSoldEventObject {
+  buyer: string;
+  amount: BigNumber;
+  price: BigNumber;
+}
+export type TokensSoldEvent = TypedEvent<
+  [string, BigNumber, BigNumber],
+  TokensSoldEventObject
+>;
+
+export type TokensSoldEventFilter = TypedEventFilter<TokensSoldEvent>;
 
 export interface Platform extends BaseContract {
   connect(signerOrProvider: Signer | Provider | string): this;
@@ -389,6 +462,8 @@ export interface Platform extends BaseContract {
       overrides?: CallOverrides
     ): Promise<[boolean]>;
 
+    minTokensToStartTrade(overrides?: CallOverrides): Promise<[BigNumber]>;
+
     order(
       orderId: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
@@ -449,6 +524,11 @@ export interface Platform extends BaseContract {
         tokensSoldInEth: BigNumber;
       }
     >;
+
+    setMinTokensToStartTrade(
+      amount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<ContractTransaction>;
 
     setRefSettings(
       saleRef1Percent: PromiseOrValue<BigNumberish>,
@@ -518,6 +598,8 @@ export interface Platform extends BaseContract {
     overrides?: CallOverrides
   ): Promise<boolean>;
 
+  minTokensToStartTrade(overrides?: CallOverrides): Promise<BigNumber>;
+
   order(
     orderId: PromiseOrValue<BigNumberish>,
     overrides?: CallOverrides
@@ -578,6 +660,11 @@ export interface Platform extends BaseContract {
       tokensSoldInEth: BigNumber;
     }
   >;
+
+  setMinTokensToStartTrade(
+    amount: PromiseOrValue<BigNumberish>,
+    overrides?: Overrides & { from?: PromiseOrValue<string> }
+  ): Promise<ContractTransaction>;
 
   setRefSettings(
     saleRef1Percent: PromiseOrValue<BigNumberish>,
@@ -645,6 +732,8 @@ export interface Platform extends BaseContract {
       overrides?: CallOverrides
     ): Promise<boolean>;
 
+    minTokensToStartTrade(overrides?: CallOverrides): Promise<BigNumber>;
+
     order(
       orderId: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
@@ -704,6 +793,11 @@ export interface Platform extends BaseContract {
       }
     >;
 
+    setMinTokensToStartTrade(
+      amount: PromiseOrValue<BigNumberish>,
+      overrides?: CallOverrides
+    ): Promise<void>;
+
     setRefSettings(
       saleRef1Percent: PromiseOrValue<BigNumberish>,
       saleRef2Percent: PromiseOrValue<BigNumberish>,
@@ -731,6 +825,26 @@ export interface Platform extends BaseContract {
   };
 
   filters: {
+    "OrderCreated(uint256,tuple)"(
+      orderId?: null,
+      order?: null
+    ): OrderCreatedEventFilter;
+    OrderCreated(orderId?: null, order?: null): OrderCreatedEventFilter;
+
+    "OrderRedeemed(uint256,address,uint256)"(
+      orderId?: null,
+      buyer?: null,
+      amount?: null
+    ): OrderRedeemedEventFilter;
+    OrderRedeemed(
+      orderId?: null,
+      buyer?: null,
+      amount?: null
+    ): OrderRedeemedEventFilter;
+
+    "OrderRemoved(uint256)"(orderId?: null): OrderRemovedEventFilter;
+    OrderRemoved(orderId?: null): OrderRemovedEventFilter;
+
     "RoleAdminChanged(bytes32,bytes32,bytes32)"(
       role?: PromiseOrValue<BytesLike> | null,
       previousAdminRole?: PromiseOrValue<BytesLike> | null,
@@ -769,6 +883,17 @@ export interface Platform extends BaseContract {
       roundFinishDate?: null
     ): RoundStartedEventFilter;
     RoundStarted(round?: null, roundFinishDate?: null): RoundStartedEventFilter;
+
+    "TokensSold(address,uint256,uint256)"(
+      buyer?: null,
+      amount?: null,
+      price?: null
+    ): TokensSoldEventFilter;
+    TokensSold(
+      buyer?: null,
+      amount?: null,
+      price?: null
+    ): TokensSoldEventFilter;
   };
 
   estimateGas: {
@@ -807,6 +932,8 @@ export interface Platform extends BaseContract {
       account: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
+
+    minTokensToStartTrade(overrides?: CallOverrides): Promise<BigNumber>;
 
     order(
       orderId: PromiseOrValue<BigNumberish>,
@@ -848,6 +975,11 @@ export interface Platform extends BaseContract {
     ): Promise<BigNumber>;
 
     roundData(overrides?: CallOverrides): Promise<BigNumber>;
+
+    setMinTokensToStartTrade(
+      amount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<BigNumber>;
 
     setRefSettings(
       saleRef1Percent: PromiseOrValue<BigNumberish>,
@@ -920,6 +1052,10 @@ export interface Platform extends BaseContract {
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
+    minTokensToStartTrade(
+      overrides?: CallOverrides
+    ): Promise<PopulatedTransaction>;
+
     order(
       orderId: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
@@ -960,6 +1096,11 @@ export interface Platform extends BaseContract {
     ): Promise<PopulatedTransaction>;
 
     roundData(overrides?: CallOverrides): Promise<PopulatedTransaction>;
+
+    setMinTokensToStartTrade(
+      amount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<PopulatedTransaction>;
 
     setRefSettings(
       saleRef1Percent: PromiseOrValue<BigNumberish>,

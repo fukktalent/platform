@@ -64,7 +64,7 @@ task("stake", "stake tokens")
         const factory = await ethers.getContractFactory("Staking");
         const staking = factory.attach(contract);
 
-        const tx = await staking.connect(signers[signer]).stake(amount)
+        const tx = await staking.connect(signers[signer]).stake(amount);
 
         console.log(tx)
     });

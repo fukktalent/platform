@@ -7,7 +7,7 @@ import { BigNumber, BigNumberish } from "ethers";
 
 import config from "./config";
 
-const { REF } = config.PLATFORM;
+const { REF, SOME_AMOUNT } = config.PLATFORM;
 
 describe("Platform", function () {
     let owner: SignerWithAddress;
@@ -41,12 +41,12 @@ describe("Platform", function () {
         await acdmToken.deployed();
 
         await xxxToken.grantRole(ethers.utils.keccak256(ethers.utils.toUtf8Bytes("MINTER_BURNER_ROLE")), owner.address);
-        await xxxToken.mint(owner.address, 1000000000);
+        await xxxToken.mint(owner.address, SOME_AMOUNT * 10);
         await xxxToken.approve(uniRouter.address, ethers.constants.MaxUint256);
         const deadline: BigNumberish = (await ethers.provider.getBlock("latest")).timestamp + 60;
         await uniRouter.addLiquidityETH(
             xxxToken.address,
-            1000000,
+            SOME_AMOUNT,
             0,
             ethers.utils.parseEther("1"),
             owner.address, 
@@ -56,9 +56,6 @@ describe("Platform", function () {
 
         const pairAddress: string = await uniFactory.getPair(uniRouter.WETH(), xxxToken.address);
         pairToken = <IUniswapV2Pair> await ethers.getContractAt("IUniswapV2Pair", pairAddress);
-        const { reserve0, reserve1 } = await pairToken.getReserves();
-        expect(reserve0).to.be.equal(1000000);
-        expect(reserve1).to.be.equal(ethers.utils.parseEther("1"));
 
         platform = await new Platform__factory(owner).deploy(
             acdmToken.address,
@@ -244,7 +241,6 @@ describe("Platform", function () {
             await expect(tx).to.emit(platform, "RoundStarted");
 
             const newRoundData = await platform.roundData();
-
             expect(newRoundData.round).to.be.equal(1);
             expect(roundData.roundFinishDate).to.not.equal(newRoundData.roundFinishDate);
             expect(newRoundData.tokenPrice).to.be.equal(ethers.utils.parseEther("0.00001"));

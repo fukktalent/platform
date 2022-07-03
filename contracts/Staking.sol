@@ -39,7 +39,11 @@ contract Staking is AccessControl {
     /// @param tokenPair_ address of staking lp token
     /// @param rewardToken_ address of reward token
     /// @param votingAddress address of dao voting contract
-    constructor(IERC20 tokenPair_, IERC20 rewardToken_, address votingAddress) {
+    constructor(
+        IERC20 tokenPair_,
+        IERC20 rewardToken_,
+        address votingAddress
+    ) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(DAO_ROLE, votingAddress);
         _setRoleAdmin(DAO_ROLE, DEFAULT_ADMIN_ROLE);
